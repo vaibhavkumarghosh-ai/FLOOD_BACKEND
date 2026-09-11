@@ -1,4 +1,4 @@
-﻿import threading, time, random, sqlite3, joblib
+import threading, time, random, sqlite3, joblib
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -103,12 +103,21 @@ def run_prediction(vdata: dict):
 
 def apply_prediction(vdata: dict, source: str):
     risk_score, risk_level = run_prediction(vdata)
-    lead_time = 2.0 if risk_level == "Very High" else (4.0 if risk_level == "High" else 8.0)
+    
+    # Physics-based dynamic lead time calculation formula
+    soil_pct = vdata.get("soil_moisture_pct", 50.0)
+    rainfall = vdata.get("rainfall_mm", 0.0)
+    slope = vdata.get("slope_deg", 15.0)
+    
+    val = ((100.0 - soil_pct) / (rainfall * 0.05 + 1.0)) * (1.0 - slope / 90.0)
+    lead_time = float(np.clip(val, 0.5, 12.0))
+    lead_time = round(lead_time, 1)
+
     vdata["risk_score"] = risk_score
     vdata["risk_level"] = risk_level
     vdata["estimated_lead_time_hrs"] = lead_time
     vdata["last_updated"] = time.time()
-    log_prediction(vdata["village_id"], vdata.get("village_name", ""), vdata.get("rainfall_mm", 0.0), vdata.get("soil_moisture_pct", 0.0), risk_score, risk_level, lead_time, source)
+    log_prediction(vdata["village_id"], vdata.get("village_name", ""), rainfall, soil_pct, risk_score, risk_level, lead_time, source)
     return risk_score, risk_level, lead_time
 
 class TriggerPayload(BaseModel):
